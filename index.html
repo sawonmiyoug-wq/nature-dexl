@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>자연 도감 v0.1.0 — 탐험가 &amp; 종 연구 RPG</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      background-color: #f6f4ec;
+      color: #1f2937;
+    }
+    .silhouette-img {
+      filter: brightness(0) opacity(0.22);
+    }
+    @keyframes scanLine {
+      0% { top: 0%; }
+      50% { top: 92%; }
+      100% { top: 0%; }
+    }
+    .scan-line {
+      animation: scanLine 1.2s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen pb-24">
+
+  <!-- 상단 탐험가 HUD -->
+  <header class="bg-emerald-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-3xl mx-auto px-4 py-3.5">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-2xl bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center shrink-0 text-xl">
+            🌿
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span id="explorer-level-badge" class="px-2 py-0.5 text-xs font-bold bg-amber-400 text-emerald-950 rounded-full">Lv.1</span>
+              <h1 id="explorer-title" class="font-bold text-base sm:text-lg truncate">새싹 관찰자</h1>
+            </div>
+            <div class="mt-1.5 flex items-center gap-2">
+              <div class="w-36 sm:w-48 h-2 bg-emerald-950/70 rounded-full overflow-hidden">
+                <div id="explorer-exp-bar" class="h-full bg-amber-400 transition-all duration-500" style="width: 0%"></div>
+              </div>
+              <span id="explorer-exp-text" class="text-xs text-emerald-200 font-medium">0 / 100 EXP</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="btn-export" type="button" title="도감 백업 저장" class="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-700 text-emerald-100 transition">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </button>
+          <button id="btn-reset-ask" type="button" title="데이터 초기화" class="p-2 rounded-xl bg-emerald-800/80 hover:bg-rose-700 text-emerald-100 transition">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 요약 통계 & 내비게이션 탭 -->
+      <div class="mt-3 pt-3 border-t border-emerald-800 flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-3 text-xs text-emerald-200">
+          <span>도감 완성 <strong id="stat-discovered" class="text-white">0/6</strong></span>
+          <span>총 발견 <strong id="stat-total" class="text-white">0회</strong></span>
+        </div>
+        <div class="flex bg-emerald-950/60 p-1 rounded-xl gap-1">
+          <button type="button" data-tab="dex" class="tab-btn px-3 py-1 rounded-lg text-xs font-semibold bg-white text-emerald-950 shadow-sm transition">도감</button>
+          <button type="button" data-tab="quests" class="tab-btn px-3 py-1 rounded-lg text-xs font-semibold text-emerald-200 hover:text-white transition flex items-center gap-1">
+            퀘스트
+            <span id="quest-dot" class="hidden w-2 h-2 rounded-full bg-amber-400"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 pt-5">
+
+    <!-- 빠른 촬영/체험 배너 -->
+    <section class="bg-white rounded-3xl p-4 sm:p-5 shadow-sm border border-stone-200/80 mb-5">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span class="inline-block text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full mb-1.5">v0.1.0 무료 로컬 도감</span>
+          <h2 class="text-lg font-bold text-stone-900">오늘 발견한 동·식물을 기록해 보세요</h2>
+          <p class="text-xs sm:text-sm text-stone-500 mt-0.5">사진을 올리면 도감 카드가 해금되고 탐험가·연구 레벨이 오릅니다.</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2 shrink-0">
+          <label for="photo-input" class="cursor-pointer inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition">
+            <i data-lucide="camera" class="w-4 h-4"></i>
+            <span>사진 찍기 / 올리기</span>
+          </label>
+          <input id="photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
+          <button id="btn-sample" type="button" class="inline-flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold text-xs sm:text-sm transition">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>샘플로 체험</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 탭 1: 도감 뷰 -->
+    <section id="view-dex">
+      <!-- 검색 및 필터 -->
+      <div class="flex flex-col sm:flex-row gap-2.5 mb-4">
+        <div class="relative flex-1">
+          <i data-lucide="search" class="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+          <input id="search-input" type="text" placeholder="생물 이름 검색..." class="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-white border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/30 focus:border-emerald-600" />
+        </div>
+        <div class="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <button type="button" data-filter="all" class="filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-800 text-white shrink-0">전체</button>
+          <button type="button" data-filter="plant" class="filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-stone-600 border border-stone-200 shrink-0">🌱 식물</button>
+          <button type="button" data-filter="animal" class="filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-stone-600 border border-stone-200 shrink-0">🦋 동물·곤충</button>
+          <button type="button" data-filter="undiscovered" class="filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-stone-600 border border-stone-200 shrink-0">❓ 미발견</button>
+        </div>
+      </div>
+
+      <!-- 도감 카드 그리드 -->
+      <div id="dex-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3.5"></div>
+      <div id="dex-empty" class="hidden text-center py-12 bg-white rounded-3xl border border-stone-200 text-stone-500 text-sm">
+        조건에 맞는 도감 항목이 없습니다.
+      </div>
+    </section>
+
+    <!-- 탭 2: 퀘스트 뷰 -->
+    <section id="view-quests" class="hidden space-y-3">
+      <div class="bg-amber-50 border border-amber-200/80 rounded-2xl p-3.5 text-xs text-amber-900 flex items-center gap-2.5">
+        <i data-lucide="award" class="w-4 h-4 shrink-0 text-amber-600"></i>
+        <span>과금이나 광고 없이 순수 탐험 기록만으로 퀘스트를 깨고 탐험가 레벨을 올릴 수 있습니다.</span>
+      </div>
+      <div id="quest-list" class="space-y-3"></div>
+    </section>
+
+  </main>
+
+  <!-- 모달 1: 사진 등록 & AI 판별 시뮬레이션 -->
+  <div id="modal-register" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg text-stone-900">새로운 발견 기록하기</h3>
+        <button id="btn-close-register" type="button" class="p-1.5 rounded-full hover:bg-stone-100 text-stone-500">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- 사진 미리보기 + 스캔 효과 -->
+      <div class="relative rounded-2xl overflow-hidden bg-stone-100 h-48 mb-4 border border-stone-200">
+        <img id="preview-img" src="" alt="업로드 사진 미리보기" class="w-full h-full object-cover" />
+        <div id="scan-overlay" class="hidden absolute inset-0 bg-emerald-950/55 flex flex-col items-center justify-center text-white">
+          <div class="scan-line absolute left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_12px_#34d399]"></div>
+          <i data-lucide="scan-search" class="w-8 h-8 mb-2 animate-pulse text-emerald-300"></i>
+          <p class="text-sm font-semibold">온디바이스 AI가 특징을 살피는 중...</p>
+        </div>
+      </div>
+
+      <!-- 판별 결과 및 선택 -->
+      <div id="register-form" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-stone-500 mb-1.5">AI 추천 종 (직접 고르거나 아래에 입력하세요)</label>
+          <div id="suggestion-chips" class="flex flex-wrap gap-1.5"></div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="input-name" class="block text-xs font-semibold text-stone-600 mb-1">생물 이름</label>
+            <input id="input-name" type="text" placeholder="예: 민들레" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-emerald-600" />
+          </div>
+          <div>
+            <label for="input-category" class="block text-xs font-semibold text-stone-600 mb-1">분류</label>
+            <select id="input-category" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm bg-white focus:outline-none focus:border-emerald-600">
+              <option value="plant">🌱 식물</option>
+              <option value="animal">🦋 동물·곤충</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="input-habitat" class="block text-xs font-semibold text-stone-600 mb-1">발견 서식지 (v2 테라리움 구역 연동)</label>
+          <select id="input-habitat" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm bg-white focus:outline-none focus:border-emerald-600">
+            <option value="들판/공원">🌼 들판 / 공원</option>
+            <option value="숲/산">🌲 숲 / 산</option>
+            <option value="물가/습지">💧 물가 / 습지</option>
+            <option value="우리 동네">🏘️ 우리 동네</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="input-memo" class="block text-xs font-semibold text-stone-600 mb-1">관찰 메모 (선택)</label>
+          <input id="input-memo" type="text" placeholder="예: 햇빛 잘 드는 길가에서 발견!" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-emerald-600" />
+        </div>
+
+        <button id="btn-save-entry" type="button" class="w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-sm transition flex items-center justify-center gap-2">
+          <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+          <span>도감에 등록하고 경험치 받기</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 모달 2: 도감 상세 보기 -->
+  <div id="modal-detail" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+      <div class="relative h-56 bg-stone-100 shrink-0">
+        <img id="detail-img" src="" alt="" class="w-full h-full object-cover" />
+        <button id="btn-close-detail" type="button" class="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/60 text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+        <div class="absolute bottom-3 left-3 flex items-center gap-2">
+          <span id="detail-level" class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-400 text-emerald-950 shadow">연구 Lv.1</span>
+          <span id="detail-habitat" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-black/55 text-white backdrop-blur-xs">들판/공원</span>
+        </div>
+      </div>
+
+      <div class="p-5 overflow-y-auto space-y-4">
+        <div>
+          <div class="flex items-center justify-between">
+            <h3 id="detail-name" class="text-xl font-bold text-stone-900">민들레</h3>
+            <span id="detail-count" class="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">누적 1회 발견</span>
+          </div>
+          <p id="detail-desc" class="text-sm text-stone-600 mt-1.5 leading-relaxed"></p>
+        </div>
+
+        <!-- 연구 레벨 진행 바 -->
+        <div class="bg-stone-50 rounded-2xl p-3.5 border border-stone-200/80">
+          <div class="flex justify-between text-xs font-semibold text-stone-600 mb-1.5">
+            <span>종 연구 진척도</span>
+            <span id="detail-next-info">다음 레벨까지 1회 남음</span>
+          </div>
+          <div class="h-2 bg-stone-200 rounded-full overflow-hidden">
+            <div id="detail-progress-bar" class="h-full bg-emerald-600 transition-all duration-300" style="width: 30%"></div>
+          </div>
+        </div>
+
+        <!-- 최근 메모 로그 -->
+        <div>
+          <h4 class="text-xs font-bold text-stone-500 uppercase tracking-wider mb-2">내 관찰 기록</h4>
+          <div id="detail-logs" class="space-y-2 max-h-36 overflow-y-auto"></div>
+        </div>
+
+        <button id="btn-quick-add-same" type="button" class="w-full py-2.5 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-sm transition flex items-center justify-center gap-1.5">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+          <span>이 생물 또 발견해서 연구 레벨 올리기</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 모달 3: 초기화 확인 -->
+  <div id="modal-reset" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl p-5 max-w-xs w-full shadow-xl text-center">
+      <div class="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+      </div>
+      <h3 class="font-bold text-base text-stone-900">도감 기록을 초기화할까요?</h3>
+      <p class="text-xs text-stone-500 mt-1">저장된 사진과 경험치 기록이 모두 처음 상태로 돌아갑니다.</p>
+      <div class="mt-4 flex gap-2">
+        <button id="btn-reset-cancel" type="button" class="flex-1 py-2.5 rounded-xl bg-stone-100 text-stone-700 font-semibold text-sm">취소</button>
+        <button id="btn-reset-confirm" type="button" class="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-semibold text-sm">초기화</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 -->
+  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-stone-900 text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-full shadow-lg whitespace-nowrap"></div>
+
+  <script>
+    const STORAGE_KEY = 'nature_dex_v01_state';
+
+    // 기본 도감 마스터 목록 (미발견 시 실루엣으로 표시)
+    const BASE_SPECIES = [
+      {
+        id: 'dandelion',
+        name: '민들레',
+        category: 'plant',
+        habitat: '들판/공원',
+        hint: '봄철 햇볕이 잘 드는 공원이나 길가에서 노란 꽃을 찾아보세요.',
+        desc: '생명력이 강해 도심 보도블록 틈에서도 자라는 대표적인 야생화입니다. 꽃이 지면 하얀 갓털이 생겨 바람을 타고 멀리 날아갑니다.',
+        emoji: '🌼'
+      },
+      {
+        id: 'cabbage_butterfly',
+        name: '배추흰나비',
+        category: 'animal',
+        habitat: '들판/공원',
+        hint: '꽃밭 주변을 팔랑팔랑 날아다니는 하얀 나비를 찾아보세요.',
+        desc: '우리 주변에서 가장 흔히 볼 수 있는 나비 중 하나로, 봄부터 가을까지 꽃의 꿀을 찾아 부지런히 날아다닙니다.',
+        emoji: '🦋'
+      },
+      {
+        id: 'sparrow',
+        name: '참새',
+        category: 'animal',
+        habitat: '우리 동네',
+        hint: '전깃줄이나 공원 벤치 주변에서 짹짹거리는 작은 새를 찍어보세요.',
+        desc: '사람 사는 곳 가까이에서 무리를 지어 살아가는 친숙한 텃새입니다. 볼에 있는 검은 반점이 특징입니다.',
+        emoji: '🐦'
+      },
+      {
+        id: 'maple',
+        name: '단풍나무',
+        category: 'plant',
+        habitat: '숲/산',
+        hint: '손바닥처럼 갈라진 잎을 가진 나무를 찾아보세요.',
+        desc: '가을이 되면 잎이 붉거나 노랗게 물들어 산과 공원을 아름답게 수놓는 낙엽활엽수입니다.',
+        emoji: '🍁'
+      },
+      {
+        id: 'ladybug',
+        name: '칠성무당벌레',
+        category: 'animal',
+        habitat: '들판/공원',
+        hint: '풀잎 위에 앉아 있는 빨간 등딱지의 작은 곤충을 찾아보세요.',
+        desc: '등에 일곱 개의 검은 점이 있는 익충으로, 식물을 해치는 진딧물을 잡아먹어 농사와 정원에 큰 도움을 줍니다.',
+        emoji: '🐞'
+      },
+      {
+        id: 'lotus',
+        name: '연꽃',
+        category: 'plant',
+        habitat: '물가/습지',
+        hint: '연못이나 호수 물 위에 피어난 큰 잎과 꽃을 찾아보세요.',
+        desc: '진흙 속에서도 깨끗하고 고운 꽃을 피우는 수생식물로, 잎 표면에 물방울이 스며들지 않고 동글게 맺히는 성질이 있습니다.',
+        emoji: '🪷'
+      }
+    ];
+
+    const EXPLORER_TITLES = [
+      '새싹 관찰자',
+      '동네 산책가',
+      '숲속 탐험가',
+      '생태 연구원',
+      '자연 마스터'
+    ];
+
+    function createSampleSvgDataUrl(emoji, bgHex, label) {
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+        <rect width="400" height="300" fill="${bgHex}"/>
+        <circle cx="200" cy="135" r="78" fill="#ffffff" fill-opacity="0.55"/>
+        <text x="200" y="158" font-size="82" text-anchor="middle">${emoji}</text>
+        <text x="200" y="255" font-size="20" font-family="sans-serif" font-weight="bold" fill="#1f2937" text-anchor="middle">${label} 관찰 샘플</text>
+      </svg>`;
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    }
+
+    function getInitialState() {
+      return {
+        exp: 0,
+        entries: {}, // key: speciesId -> { id, name, category, habitat, desc, count, level, imageUrl, logs: [] }
+        claimedQuests: []
+      };
+    }
+
+    let state = loadState();
+    let activeTab = 'dex';
+    let activeFilter = 'all';
+    let searchQuery = '';
+    let pendingImageUrl = '';
+    let detailTargetId = null;
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          return { ...getInitialState(), ...parsed };
+        }
+      } catch (e) {}
+      return getInitialState();
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+    }
+
+    function getExplorerLevelInfo(exp) {
+      const level = Math.floor(exp / 100) + 1;
+      const currentExp = exp % 100;
+      const title = EXPLORER_TITLES[Math.min(level - 1, EXPLORER_TITLES.length - 1)];
+      return { level, currentExp, nextExp: 100, title };
+    }
+
+    function calcResearchLevel(count) {
+      if (count >= 10) return 5;
+      if (count >= 6) return 4;
+      if (count >= 3) return 3;
+      if (count >= 2) return 2;
+      return 1;
+    }
+
+    function getNextResearchThreshold(count) {
+      if (count < 2) return 2;
+      if (count < 3) return 3;
+      if (count < 6) return 6;
+      if (count < 10) return 10;
+      return 10;
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+    }
+
+    function fireConfetti() {
+      if (typeof confetti === 'function') {
+        confetti({ particleCount: 55, spread: 60, origin: { y: 0.7 } });
+      }
+    }
+
+    function getQuests() {
+      const entriesList = Object.values(state.entries);
+      const discoveredCount = entriesList.length;
+      const hasPlant = entriesList.some((e) => e.category === 'plant');
+      const hasLv2 = entriesList.some((e) => e.level >= 2);
+
+      return [
+        {
+          id: 'q_first',
+          title: '첫 발걸음: 생물 1종 기록하기',
+          desc: '아무 동·식물이나 사진으로 찍어 도감에 첫 등록을 완료하세요.',
+          reward: 50,
+          done: discoveredCount >= 1
+        },
+        {
+          id: 'q_plant',
+          title: '초록빛 수집가: 식물 1종 발견',
+          desc: '주변의 꽃이나 나무 등 식물을 1종 이상 기록하세요.',
+          reward: 40,
+          done: hasPlant
+        },
+        {
+          id: 'q_research',
+          title: '꾸준한 관찰: 연구 Lv.2 달성하기',
+          desc: '같은 종을 2회 이상 발견해 연구 레벨을 올려보세요.',
+          reward: 60,
+          done: hasLv2
+        }
+      ];
+    }
+
+    function renderAll() {
+      // 1. 탐험가 HUD
+      const info = getExplorerLevelInfo(state.exp);
+      document.getElementById('explorer-level-badge').textContent = `Lv.${info.level}`;
+      document.getElementById('explorer-title').textContent = info.title;
+      document.getElementById('explorer-exp-bar').style.width = `${info.currentExp}%`;
+      document.getElementById('explorer-exp-text').textContent = `${info.currentExp} / ${info.nextExp} EXP`;
+
+      const discoveredList = Object.values(state.entries);
+      const totalSpeciesCount = Math.max(BASE_SPECIES.length, discoveredList.length);
+      const totalDiscoveries = discoveredList.reduce((acc, cur) => acc + cur.count, 0);
+
+      document.getElementById('stat-discovered').textContent = `${discoveredList.length}/${totalSpeciesCount}`;
+      document.getElementById('stat-total').textContent = `${totalDiscoveries}회`;
+
+      // 2. 도감 카드 리스트 조합 (기본 도감 + 사용자 직접 추가 종)
+      const combined = [];
+      const seenIds = new Set();
+
+      BASE_SPECIES.forEach((base) => {
+        seenIds.add(base.id);
+        const userRecord = state.entries[base.id];
+        if (userRecord) {
+          combined.push({ ...userRecord, discovered: true, emoji: base.emoji });
+        } else {
+          combined.push({
+            id: base.id,
+            name: base.name,
+            category: base.category,
+            habitat: base.habitat,
+            hint: base.hint,
+            emoji: base.emoji,
+            discovered: false
+          });
+        }
+      });
+
+      discoveredList.forEach((rec) => {
+        if (!seenIds.has(rec.id)) {
+          combined.push({ ...rec, discovered: true, emoji: rec.category === 'plant' ? '🌿' : '🐾' });
+        }
+      });
+
+      const filtered = combined.filter((item) => {
+        if (activeFilter === 'plant' && item.category !== 'plant') return false;
+        if (activeFilter === 'animal' && item.category !== 'animal') return false;
+        if (activeFilter === 'undiscovered' && item.discovered) return false;
+        if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+        return true;
+      });
+
+      const grid = document.getElementById('dex-grid');
+      const empty = document.getElementById('dex-empty');
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '';
+        empty.classList.remove('hidden');
+      } else {
+        empty.classList.add('hidden');
+        grid.innerHTML = filtered.map((item) => {
+          if (item.discovered) {
+            return `
+              <button type="button" data-open-detail="${item.id}" class="text-left bg-white rounded-2xl overflow-hidden shadow-xs border border-stone-200/80 hover:border-emerald-500 hover:shadow-md transition group flex flex-col">
+                <div class="relative h-32 w-full bg-stone-100 overflow-hidden">
+                  <img src="${item.imageUrl}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                  <span class="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-400 text-emerald-950 shadow-xs">연구 Lv.${item.level}</span>
+                </div>
+                <div class="p-3 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div class="font-bold text-sm text-stone-900 truncate">${item.name}</div>
+                    <div class="text-[11px] text-stone-500 mt-0.5">${item.habitat}</div>
+                  </div>
+                  <div class="mt-2 pt-2 border-t border-stone-100 flex items-center justify-between text-[11px] font-semibold text-emerald-700">
+                    <span>발견 ${item.count}회</span>
+                    <span>상세보기 &rsaquo;</span>
+                  </div>
+                </div>
+              </button>
+            `;
+          } else {
+            return `
+              <button type="button" data-quick-register="${item.id}" class="text-left bg-stone-100/80 rounded-2xl overflow-hidden border border-dashed border-stone-300 hover:border-emerald-500 hover:bg-emerald-50/40 transition flex flex-col">
+                <div class="relative h-32 w-full bg-stone-200/70 flex items-center justify-center">
+                  <span class="text-5xl silhouette-img select-none">${item.emoji}</span>
+                  <span class="absolute top-2 left-2 px-2 py-0.5 rounded-full text-[11px] font-bold bg-stone-300 text-stone-600">미발견</span>
+                </div>
+                <div class="p-3 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div class="font-bold text-sm text-stone-500">??? (${item.name})</div>
+                    <div class="text-[11px] text-stone-400 mt-0.5 line-clamp-2">${item.hint}</div>
+                  </div>
+                  <div class="mt-2 text-[11px] font-semibold text-emerald-700">탭해서 기록하기 &rsaquo;</div>
+                </div>
+              </button>
+            `;
+          }
+        }).join('');
+      }
+
+      // 3. 퀘스트 렌더링
+      const quests = getQuests();
+      const hasClaimable = quests.some((q) => q.done && !state.claimedQuests.includes(q.id));
+      document.getElementById('quest-dot').classList.toggle('hidden', !hasClaimable);
+
+      document.getElementById('quest-list').innerHTML = quests.map((q) => {
+        const claimed = state.claimedQuests.includes(q.id);
+        let btnHtml = '';
+        if (claimed) {
+          btnHtml = `<span class="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-400 text-xs font-bold">수령 완료</span>`;
+        } else if (q.done) {
+          btnHtml = `<button type="button" data-claim-quest="${q.id}" class="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-500 text-emerald-950 text-xs font-bold shadow-xs transition">보상 받기 (+${q.reward} EXP)</button>`;
+        } else {
+          btnHtml = `<span class="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-500 text-xs font-semibold">진행 중 (+${q.reward} EXP)</span>`;
+        }
+        return `
+          <div class="bg-white rounded-2xl p-4 border border-stone-200/80 shadow-xs flex items-center justify-between gap-3">
+            <div>
+              <h4 class="font-bold text-sm text-stone-900">${q.title}</h4>
+              <p class="text-xs text-stone-500 mt-0.5">${q.desc}</p>
+            </div>
+            <div class="shrink-0">${btnHtml}</div>
+          </div>
+        `;
+      }).join('');
+
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function openRegisterModal(imageUrl, presetSpeciesId = null) {
+      pendingImageUrl = imageUrl;
+      document.getElementById('preview-img').src = imageUrl;
+
+      const scan = document.getElementById('scan-overlay');
+      const form = document.getElementById('register-form');
+      scan.classList.remove('hidden');
+      form.classList.add('opacity-40', 'pointer-events-none');
+      document.getElementById('modal-register').classList.remove('hidden');
+
+      // 추천 칩 렌더링
+      const chipsEl = document.getElementById('suggestion-chips');
+      chipsEl.innerHTML = BASE_SPECIES.map((s) => `
+        <button type="button" data-pick-species="${s.id}" class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition">
+          ${s.emoji} ${s.name}
+        </button>
+      `).join('');
+
+      const preset = presetSpeciesId ? BASE_SPECIES.find((s) => s.id === presetSpeciesId) : BASE_SPECIES[0];
+      if (preset) {
+        document.getElementById('input-name').value = preset.name;
+        document.getElementById('input-category').value = preset.category;
+        document.getElementById('input-habitat').value = preset.habitat;
+      }
+      document.getElementById('input-memo').value = '';
+
+      setTimeout(() => {
+        scan.classList.add('hidden');
+        form.classList.remove('opacity-40', 'pointer-events-none');
+      }, 850);
+    }
+
+    function openDetailModal(id) {
+      const entry = state.entries[id];
+      if (!entry) return;
+      detailTargetId = id;
+
+      document.getElementById('detail-img').src = entry.imageUrl;
+      document.getElementById('detail-name').textContent = entry.name;
+      document.getElementById('detail-level').textContent = `연구 Lv.${entry.level}`;
+      document.getElementById('detail-habitat').textContent = entry.habitat;
+      document.getElementById('detail-count').textContent = `누적 ${entry.count}회 발견`;
+      document.getElementById('detail-desc').textContent = entry.desc || '사용자가 직접 발견해 도감에 기록한 소중한 생물입니다.';
+
+      const nextThreshold = getNextResearchThreshold(entry.count);
+      const remain = Math.max(0, nextThreshold - entry.count);
+      const pct = entry.level >= 5 ? 100 : Math.min(100, Math.round((entry.count / nextThreshold) * 100));
+      document.getElementById('detail-next-info').textContent = entry.level >= 5 ? '최고 연구 레벨 달성!' : `다음 레벨까지 ${remain}회 남음`;
+      document.getElementById('detail-progress-bar').style.width = `${pct}%`;
+
+      document.getElementById('detail-logs').innerHTML = (entry.logs || []).map((log) => `
+        <div class="text-xs bg-stone-50 rounded-xl p-2.5 border border-stone-200/70">
+          <div class="text-stone-400 font-medium">${log.date} · ${log.habitat}</div>
+          <div class="text-stone-700 mt-0.5">${log.memo || '특이사항 없이 관찰 기록됨'}</div>
+        </div>
+      `).join('');
+
+      document.getElementById('modal-detail').classList.remove('hidden');
+    }
+
+    // 이벤트 연결
+    document.getElementById('photo-input').addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        openRegisterModal(ev.target.result);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    });
+
+    document.getElementById('btn-sample').addEventListener('click', () => {
+      const randomSpecies = BASE_SPECIES[Math.floor(Math.random() * BASE_SPECIES.length)];
+      const sampleUrl = createSampleSvgDataUrl(randomSpecies.emoji, '#dcfce7', randomSpecies.name);
+      openRegisterModal(sampleUrl, randomSpecies.id);
+    });
+
+    document.getElementById('suggestion-chips').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-pick-species]');
+      if (!btn) return;
+      const sp = BASE_SPECIES.find((s) => s.id === btn.dataset.pickSpecies);
+      if (!sp) return;
+      document.getElementById('input-name').value = sp.name;
+      document.getElementById('input-category').value = sp.category;
+      document.getElementById('input-habitat').value = sp.habitat;
+    });
+
+    document.getElementById('btn-save-entry').addEventListener('click', () => {
+      const name = document.getElementById('input-name').value.trim();
+      if (!name) {
+        showToast('생물 이름을 입력해 주세요!');
+        return;
+      }
+      const category = document.getElementById('input-category').value;
+      const habitat = document.getElementById('input-habitat').value;
+      const memo = document.getElementById('input-memo').value.trim();
+
+      const matchedBase = BASE_SPECIES.find((s) => s.name === name);
+      const speciesId = matchedBase ? matchedBase.id : `custom_${name.toLowerCase().replace(/\s+/g, '_')}`;
+
+      const prevExpInfo = getExplorerLevelInfo(state.exp);
+      const isNewSpecies = !state.entries[speciesId];
+      const gainedExp = isNewSpecies ? 40 : 20;
+
+      const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+      const existing = state.entries[speciesId];
+
+      if (existing) {
+        const nextCount = existing.count + 1;
+        const nextLevel = calcResearchLevel(nextCount);
+        existing.count = nextCount;
+        existing.level = nextLevel;
+        existing.imageUrl = pendingImageUrl;
+        existing.habitat = habitat;
+        existing.logs.unshift({ date: today, habitat, memo });
+      } else {
+        state.entries[speciesId] = {
+          id: speciesId,
+          name,
+          category,
+          habitat,
+          desc: matchedBase ? matchedBase.desc : '',
+          count: 1,
+          level: 1,
+          imageUrl: pendingImageUrl,
+          logs: [{ date: today, habitat, memo }]
+        };
+      }
+
+      state.exp += gainedExp;
+      const nextExpInfo = getExplorerLevelInfo(state.exp);
+      saveState();
+
+      document.getElementById('modal-register').classList.add('hidden');
+      renderAll();
+
+      if (nextExpInfo.level > prevExpInfo.level) {
+        fireConfetti();
+        showToast(`축하합니다! 탐험가 Lv.${nextExpInfo.level} (${nextExpInfo.title}) 달성!`);
+      } else {
+        showToast(isNewSpecies ? `새로운 도감 등록! (+${gainedExp} EXP)` : `${name} 연구 기록 추가! (+${gainedExp} EXP)`);
+      }
+    });
+
+    document.getElementById('dex-grid').addEventListener('click', (e) => {
+      const detailBtn = e.target.closest('[data-open-detail]');
+      if (detailBtn) {
+        openDetailModal(detailBtn.dataset.openDetail);
+        return;
+      }
+      const quickBtn = e.target.closest('[data-quick-register]');
+      if (quickBtn) {
+        const sp = BASE_SPECIES.find((s) => s.id === quickBtn.dataset.quickRegister);
+        if (sp) {
+          const sampleUrl = createSampleSvgDataUrl(sp.emoji, '#ecfccb', sp.name);
+          openRegisterModal(sampleUrl, sp.id);
+        }
+      }
+    });
+
+    document.getElementById('btn-quick-add-same').addEventListener('click', () => {
+      if (!detailTargetId) return;
+      const entry = state.entries[detailTargetId];
+      document.getElementById('modal-detail').classList.add('hidden');
+      openRegisterModal(entry.imageUrl, entry.id);
+    });
+
+    document.getElementById('quest-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-claim-quest]');
+      if (!btn) return;
+      const qId = btn.dataset.claimQuest;
+      const q = getQuests().find((item) => item.id === qId);
+      if (!q || !q.done || state.claimedQuests.includes(qId)) return;
+
+      const prevLv = getExplorerLevelInfo(state.exp).level;
+      state.claimedQuests.push(qId);
+      state.exp += q.reward;
+      saveState();
+      renderAll();
+
+      const nextLv = getExplorerLevelInfo(state.exp).level;
+      fireConfetti();
+      if (nextLv > prevLv) {
+        showToast(`퀘스트 보상 +${q.reward} EXP! 탐험가 Lv.${nextLv} 달성!`);
+      } else {
+        showToast(`퀘스트 보상 +${q.reward} EXP 획득!`);
+      }
+    });
+
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.tab;
+        document.getElementById('view-dex').classList.toggle('hidden', activeTab !== 'dex');
+        document.getElementById('view-quests').classList.toggle('hidden', activeTab !== 'quests');
+
+        document.querySelectorAll('.tab-btn').forEach((b) => {
+          const isActive = b.dataset.tab === activeTab;
+          b.className = isActive
+            ? 'tab-btn px-3 py-1 rounded-lg text-xs font-semibold bg-white text-emerald-950 shadow-sm transition'
+            : 'tab-btn px-3 py-1 rounded-lg text-xs font-semibold text-emerald-200 hover:text-white transition flex items-center gap-1';
+        });
+      });
+    });
+
+    document.querySelectorAll('.filter-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeFilter = btn.dataset.filter;
+        document.querySelectorAll('.filter-btn').forEach((b) => {
+          const isActive = b.dataset.filter === activeFilter;
+          b.className = isActive
+            ? 'filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-800 text-white shrink-0'
+            : 'filter-btn px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-stone-600 border border-stone-200 shrink-0';
+        });
+        renderAll();
+      });
+    });
+
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderAll();
+    });
+
+    document.getElementById('btn-close-register').addEventListener('click', () => {
+      document.getElementById('modal-register').classList.add('hidden');
+    });
+    document.getElementById('btn-close-detail').addEventListener('click', () => {
+      document.getElementById('modal-detail').classList.add('hidden');
+    });
+    document.getElementById('btn-reset-ask').addEventListener('click', () => {
+      document.getElementById('modal-reset').classList.remove('hidden');
+    });
+    document.getElementById('btn-reset-cancel').addEventListener('click', () => {
+      document.getElementById('modal-reset').classList.add('hidden');
+    });
+    document.getElementById('btn-reset-confirm').addEventListener('click', () => {
+      state = getInitialState();
+      saveState();
+      document.getElementById('modal-reset').classList.add('hidden');
+      renderAll();
+      showToast('도감 기록이 초기화되었습니다.');
+    });
+
+    document.getElementById('btn-export').addEventListener('click', () => {
+      const dataStr = JSON.stringify(state, null, 2);
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nature_dex_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('도감 백업 파일(JSON)을 저장했습니다.');
+    });
+
+    window.addEventListener('load', () => {
+      renderAll();
+    });
+  </script>
+</body>
+</html>
